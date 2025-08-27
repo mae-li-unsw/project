@@ -1,0 +1,44 @@
+---
+title: "A Data Science Approach to Forecast Electricity Consumption in Australia"
+author:
+- 'John Student (z123456), '
+- 'Jim Student2 (zID), '
+- 'Jack Student3 (zID).'
+date: "x/x/2025"
+output:
+  word_document:
+    toc: yes
+    toc_depth: '2'
+    number_sections: yes
+    pandoc_args: --top-level-division="chapter"
+  pdf_document:
+    template: template.tex
+    md_extensions: +raw_attribute
+    keep_md: yes
+    keep_tex: yes
+    pandoc_args: --top-level-division="chapter"
+    toc: yes
+    toc_depth: 1
+    number_sections: yes
+team: Group D
+session: Hexamester 5, 2025
+Acknowledgements: null
+Abstract: 'TODO'
+coursecode: ZZSC9020
+bibliography: references.bib
+csl: biomed-central.csl
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\setcounter{chapter}{1}
+\renewcommand\thesection{\arabic{section}}
+
+## Introduction and Motivation {.label:s-intro}
+
+
+
+## Brief Literature Review
+

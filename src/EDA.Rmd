@@ -1,0 +1,13 @@
+---
+title: "Exploratory Data Analysis"
+output: html_notebook
+---
+
+Log:
+* 27/08/2025: Document set-up
+
+# Load data
+```{r}
+
+```
+
