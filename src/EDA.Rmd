@@ -5,9 +5,132 @@ output: html_notebook
 
 Log:
 * 27/08/2025: Document set-up
+* 29/08/2025: Clean data, Data checks added. Basic analysis on distribution of temperatures added.
 
-# Load data
+# Set up
 ```{r}
-
+require(readr)
+require(here)
+require(tidyverse)
 ```
+
+# Load in raw data
+The `forecastdemand_nsw.csv.zip.partaa` and `forecastdemand_nsw.csv.zip.partab` files were manually extracted using `7-Zip` then re-zipped into the `forecastdemand_nsw.csv.zip` file.
+
+```{r}
+in_temp <- readr::read_csv(here::here("data/NSW", 
+                                      "temperature_nsw.csv.zip"))
+in_totaldemand <- readr::read_csv(here::here("data/NSW", 
+                                             "totaldemand_nsw.csv.zip"))
+in_forecastdemand <- readr::read_csv(here::here("data/NSW",
+                                                "forecastdemand_nsw.csv.zip"))
+```
+
+# Clean data
+```{r}
+# clean and extract date and time data of interest
+totaldemand <- in_totaldemand %>%
+  dplyr::mutate(
+    # convert datetime string into POSIX format
+    datetime_posixct = as.POSIXct(DATETIME, format="%d/%m/%Y %H:%M", tz="UTC"),
+    datetime_posixct = format(datetime_posixct, "%Y-%m-%d %H:%M"),
+    datetime_posixlt = as.POSIXlt(datetime_posixct),
+    full_date = as.Date(datetime_posixlt),
+    # separate out the components of potential interest
+    year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
+    month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
+    day = datetime_posixlt$mday,
+    hour = datetime_posixlt$hour,
+    day_of_week = datetime_posixlt$wday
+    ) %>%
+  dplyr::select(-datetime_posixct, -datetime_posixlt)
+
+temp <- in_temp %>%
+  dplyr::mutate(
+    # convert datetime string into POSIX format
+    datetime_posixct = as.POSIXct(DATETIME, format="%d/%m/%Y %H:%M", tz="UTC"),
+    datetime_posixct = format(datetime_posixct, "%Y-%m-%d %H:%M"),
+    datetime_posixlt = as.POSIXlt(datetime_posixct),
+    full_date = as.Date(datetime_posixct),
+    # separate out the components of potential interest
+    year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
+    month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
+    day = datetime_posixlt$mday,
+    hour = datetime_posixlt$hour,
+    day_of_week = datetime_posixlt$wday
+    ) %>%
+  dplyr::select(-datetime_posixct, -datetime_posixlt)
+
+forecastdemand <- in_forecastdemand %>%
+  dplyr::mutate(
+    # convert datetime string of observation into POSIX format
+    datetime_posixct = as.POSIXct(DATETIME, format="%Y-%m-%d %H:%M:%S", tz="UTC"),
+    datetime_posixlt = as.POSIXlt(datetime_posixct),
+    # separate out the components of potential interest
+    full_date = as.Date(datetime_posixct),
+    year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
+    month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
+    day = datetime_posixlt$mday,
+    hour = datetime_posixlt$hour,
+    day_of_week = datetime_posixlt$wday,
+    # convert datetime string of update time into POSIX format
+    datetime_posixct = as.POSIXct(LASTCHANGED, format="%Y-%m-%d %H:%M:%S"),
+    datetime_posixlt = as.POSIXlt(datetime_posixct),
+    # separate out the components of potential interest
+    update_full_date = as.Date(datetime_posixct),
+    update_year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
+    update_month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
+    update_day = datetime_posixlt$mday,
+    update_hour = datetime_posixlt$hour
+    ) %>%
+  dplyr::select(-datetime_posixct, -datetime_posixlt)
+```
+
+# Data check
+Produce basic summaries of the datasets and check if there are NAs
+```{r}
+summary(totaldemand)
+```
+```{r}
+summary(forecastdemand)
+```
+```{r}
+summary(temp)
+```
+The data appears to be all complete with no missing values.
+
+# Distribution of temperature
+
+```{r}
+ggplot(temp, aes(x=month, y=TEMPERATURE, group=month)) +
+  geom_boxplot() +
+  scale_x_discrete(limits=month.abb[1:12]) +
+  labs(x="Month", y="Temperature (Celsius)")
+```
+# Extreme weather conditions
+
+Set the minimum and maximum temperatures considered as 'extreme'
+```{r}
+extreme_bounds = c(5, 35)
+```
+
+Check how many observations fall outside of the extreme temperature bounds.
+```{r}
+temp %>%
+  dplyr::summarise(
+    n_extreme_low = sum(TEMPERATURE<extreme_bounds[1]),
+    n_extreme_high = sum(TEMPERATURE>extreme_bounds[2])
+  )
+```
+
+Visualise when temperatures are likely to fall outside of the bounds.
+```{r}
+ggplot(temp, aes(x=month, y=TEMPERATURE, group=month)) +
+  geom_boxplot() +
+  geom_hline(yintercept=extreme_bounds, col="red") +
+  scale_x_discrete(limits=month.abb[1:12]) +
+  labs(x="Month", y="Temperature (Celsius)")
+```
+
+
 
