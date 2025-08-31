@@ -6,6 +6,7 @@ output: html_notebook
 Log:
 * 27/08/2025: Document set-up
 * 29/08/2025: Clean data, Data checks added. Basic analysis on distribution of temperatures added.
+* 31/08/2025: Updated data cleaning, added aggregation of temperatures by day. Comparison of forecast and total demand (30 min intervals).
 
 # Set up
 ```{r}
@@ -26,41 +27,98 @@ in_forecastdemand <- readr::read_csv(here::here("data/NSW",
                                                 "forecastdemand_nsw.csv.zip"))
 ```
 
-# Clean data
+# Data check
+
+Check to see the number of rows in the datasets.
+
 ```{r}
-# clean and extract date and time data of interest
+nrow(in_totaldemand)
+nrow(in_forecastdemand)
+nrow(in_temp)
+```
+
+There are no NA values in any of the columns in the datasets.
+
+```{r}
+colSums(is.na(in_totaldemand))
+colSums(is.na(in_forecastdemand))
+colSums(is.na(in_temp))
+```
+
+Produce basic summaries of the columns in the datasets. 
+
+```{r}
+summary(in_totaldemand)
+summary(in_forecastdemand)
+summary(in_temp)
+```
+
+
+As there is only a single region/location included in each dataset, this can be ignored for the purposes of analysis.
+
+```{r}
+table(in_totaldemand$REGIONID)
+table(in_forecastdemand$REGIONID)
+table(in_temp$LOCATION)
+```
+
+
+# Clean data
+
+Clean and extract date and time data of interest. Timezone has been set as UTC to avoid issues with daylight savings time.
+
+```{r}
+# clean total demand data
 totaldemand <- in_totaldemand %>%
   dplyr::mutate(
     # convert datetime string into POSIX format
-    datetime_posixct = as.POSIXct(DATETIME, format="%d/%m/%Y %H:%M", tz="UTC"),
+    datetime_posixct = as.POSIXct(DATETIME, 
+                                  format="%d/%m/%Y %H:%M", tz="UTC"),
     datetime_posixct = format(datetime_posixct, "%Y-%m-%d %H:%M"),
-    datetime_posixlt = as.POSIXlt(datetime_posixct),
-    full_date = as.Date(datetime_posixlt),
+    datetime_posixct = as.POSIXct(datetime_posixct, format="%Y-%m-%d %H:%M", tz="UTC"),
+    datetime_posixlt = as.POSIXlt(datetime_posixct, 
+                                  format="%Y-%m-%d %H:%M", tz="UTC"),
     # separate out the components of potential interest
+    full_date = as.Date(datetime_posixlt),
     year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
     month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
     day = datetime_posixlt$mday,
     hour = datetime_posixlt$hour,
-    day_of_week = datetime_posixlt$wday
+    mins = datetime_posixlt$min,
+    day_of_week = datetime_posixlt$wday,
+    # as all the times are in half-hour intervals, no further cleaning required
+    rounded_datetime = datetime_posixct
     ) %>%
   dplyr::select(-datetime_posixct, -datetime_posixlt)
 
+# round datetime values to the nearest half hour to match other datasets
+temp_datetimes_rounded <- strptime(in_temp$DATETIME, 
+                                   format="%d/%m/%Y %H:%M", tz="UTC")
+temp_datetimes_rounded$min <- round(temp_datetimes_rounded$min/30) * 30
+# clean temperature data
 temp <- in_temp %>%
   dplyr::mutate(
     # convert datetime string into POSIX format
-    datetime_posixct = as.POSIXct(DATETIME, format="%d/%m/%Y %H:%M", tz="UTC"),
+    datetime_posixct = as.POSIXct(DATETIME, 
+                                  format="%d/%m/%Y %H:%M", tz="UTC"),
     datetime_posixct = format(datetime_posixct, "%Y-%m-%d %H:%M"),
-    datetime_posixlt = as.POSIXlt(datetime_posixct),
-    full_date = as.Date(datetime_posixct),
+    datetime_posixlt = as.POSIXlt(datetime_posixct, 
+                                  format="%Y-%m-%d %H:%M", tz="UTC"),
     # separate out the components of potential interest
+    full_date = as.Date(datetime_posixct),
     year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
     month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
     day = datetime_posixlt$mday,
     hour = datetime_posixlt$hour,
-    day_of_week = datetime_posixlt$wday
-    ) %>%
+    mins = datetime_posixlt$min,
+    day_of_week = datetime_posixlt$wday,
+    # time rounded to nearest half hour
+    rounded_datetime = as.POSIXct(temp_datetimes_rounded,
+                                  format="%Y-%m-%d %H:%M", tz="UTC")
+  ) %>%
   dplyr::select(-datetime_posixct, -datetime_posixlt)
 
+# clean forecast demand data
 forecastdemand <- in_forecastdemand %>%
   dplyr::mutate(
     # convert datetime string of observation into POSIX format
@@ -72,34 +130,62 @@ forecastdemand <- in_forecastdemand %>%
     month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
     day = datetime_posixlt$mday,
     hour = datetime_posixlt$hour,
+    mins = datetime_posixlt$min,
     day_of_week = datetime_posixlt$wday,
+    # as all the times are in half-hour intervals, no further cleaning required
+    rounded_datetime = datetime_posixct,
     # convert datetime string of update time into POSIX format
-    datetime_posixct = as.POSIXct(LASTCHANGED, format="%Y-%m-%d %H:%M:%S"),
-    datetime_posixlt = as.POSIXlt(datetime_posixct),
-    # separate out the components of potential interest
-    update_full_date = as.Date(datetime_posixct),
-    update_year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
-    update_month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
-    update_day = datetime_posixlt$mday,
-    update_hour = datetime_posixlt$hour
+    update_posixct = as.POSIXct(LASTCHANGED, format="%Y-%m-%d %H:%M:%S")
     ) %>%
   dplyr::select(-datetime_posixct, -datetime_posixlt)
 ```
 
 # Data check
-Produce basic summaries of the datasets and check if there are NAs
+
+Check if there are NAs in the cleaned data.
+
+```{r}
+colSums(is.na(totaldemand))
+colSums(is.na(forecastdemand))
+colSums(is.na(temp))
+```
+
+Produce basic summaries of the datasets.
+
 ```{r}
 summary(totaldemand)
-```
-```{r}
 summary(forecastdemand)
-```
-```{r}
 summary(temp)
 ```
-The data appears to be all complete with no missing values.
+
+The cleaned data appears to be all complete with no missing values.
+
+## Daily temperature
+
+Create a dataset that summarises temperature for each day (minimum, maximum, number of observations within certain ranges). 
+
+```{r}
+temp_day <- temp %>%
+  # take just the results recorded every half hour
+  dplyr::filter(mins==0 | mins==30) %>%
+  # summarise the temperature over the day
+  dplyr::summarise(
+    # find the min and max temperatures and time which it was recorded
+    min_temp = min(TEMPERATURE),
+    min_time = rounded_datetime[which.min(TEMPERATURE)],
+    max_temp = max(TEMPERATURE),
+    max_time = rounded_datetime[which.max(TEMPERATURE)],
+    # number of observations made for the day
+    n_obv = n(),
+    # aggregate at the day level
+    .by = full_date
+  )
+```
+
 
 # Distribution of temperature
+
+## All temperatures recorded
 
 ```{r}
 ggplot(temp, aes(x=month, y=TEMPERATURE, group=month)) +
@@ -107,30 +193,225 @@ ggplot(temp, aes(x=month, y=TEMPERATURE, group=month)) +
   scale_x_discrete(limits=month.abb[1:12]) +
   labs(x="Month", y="Temperature (Celsius)")
 ```
-# Extreme weather conditions
 
-Set the minimum and maximum temperatures considered as 'extreme'
+## Maximum temperatures per day
+
+```{r}
+ggplot(temp_day, aes(x=month(full_date), y=max_temp, group=month(full_date))) +
+  geom_boxplot() +
+  scale_x_discrete(limits=month.abb[1:12]) +
+  labs(x="Month", y="Temperature (Celsius)", 
+       title="Maximum temperature per day")
+```
+
+## Minimum temperatures per day
+
+```{r}
+ggplot(temp_day, aes(x=month(full_date), y=min_temp, group=month(full_date))) +
+  geom_boxplot() +
+  scale_x_discrete(limits=month.abb[1:12]) +
+  labs(x="Month", y="Temperature (Celsius)", 
+       title="Miniimum temperature per day")
+```
+```{r}
+cols <- c("Min" = "blue", "Max"="red")
+ggplot(temp_day) +
+  geom_density(aes(x=min_temp, col="Min")) +
+  geom_density(aes(x=max_temp, col="Max")) +
+  labs(x="Temperature (Celsius)", 
+       title="Distribution of min and max daily temperatures")
+```
+
+# Extreme temperature analysis
+
+First set the minimum and maximum temperatures considered as 'extreme' for the purposes of analysis.
+
 ```{r}
 extreme_bounds = c(5, 35)
 ```
 
-Check how many observations fall outside of the extreme temperature bounds.
 ```{r}
-temp %>%
+temp_extremes_day <- temp %>%
+  # take just the results recorded every half hour
+  dplyr::filter(mins==0 | mins==30) %>%
+  # calculate number of consecutive instances of high / low temperature
+  dplyr::mutate(is_low = TEMPERATURE<extreme_bounds[1],
+                is_high = TEMPERATURE>extreme_bounds[2]) %>%
+  dplyr::group_by(is_low,
+                  grp=with(rle(is_low), rep(seq_along(lengths), lengths))) %>%
+  dplyr::mutate(low_counter = seq_along(grp)*is_low) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(is_high,
+                  grp=with(rle(is_high), rep(seq_along(lengths), lengths))) %>%
+  dplyr::mutate(high_counter = seq_along(grp)*is_high) %>%
+  dplyr::ungroup() %>%
+  # summarise the temperature over the day
   dplyr::summarise(
-    n_extreme_low = sum(TEMPERATURE<extreme_bounds[1]),
-    n_extreme_high = sum(TEMPERATURE>extreme_bounds[2])
+    # find the min and max temperatures and time which it was recorded
+    min_temp = min(TEMPERATURE),
+    min_time = rounded_datetime[which.min(TEMPERATURE)],
+    max_temp = max(TEMPERATURE),
+    max_time = rounded_datetime[which.max(TEMPERATURE)],
+    # number of observations made for the day
+    n_obv = n(),
+    # number of intervals in the day outside the extreme bounds
+    n_low = sum(TEMPERATURE<extreme_bounds[1]), 
+    n_high = sum(TEMPERATURE>extreme_bounds[2]),
+    # number of consecutive high/low observations
+    # including carry-over from previous day
+    n_low_run = max(low_counter),
+    n_high_run = max(high_counter),
+    # earliest and latest times when the extremes were recorded
+    first_low_time = first(rounded_datetime[TEMPERATURE<extreme_bounds[1]]),
+    last_low_time = last(rounded_datetime[TEMPERATURE<extreme_bounds[1]]),
+    first_high_time = first(rounded_datetime[TEMPERATURE>extreme_bounds[2]]),
+    last_high_time = last(rounded_datetime[TEMPERATURE>extreme_bounds[2]]),
+    # aggregate at the day level
+    .by = full_date
   )
 ```
 
-Visualise when temperatures are likely to fall outside of the bounds.
+## Boxplots of min/max temperatures
+
+Visualise when max temperatures are likely to fall outside of the bounds.
+
 ```{r}
-ggplot(temp, aes(x=month, y=TEMPERATURE, group=month)) +
+ggplot(temp_extremes_day, 
+       aes(x=month(full_date), y=max_temp, group=month(full_date))) +
   geom_boxplot() +
   geom_hline(yintercept=extreme_bounds, col="red") +
   scale_x_discrete(limits=month.abb[1:12]) +
-  labs(x="Month", y="Temperature (Celsius)")
+  labs(x="Month", y="Max daily temperature (Celsius)")
 ```
 
+Visualise when min temperatures are likely to fall outside of the bounds.
 
+```{r}
+ggplot(temp_extremes_day, 
+       aes(x=month(full_date), y=min_temp, group=month(full_date))) +
+  geom_boxplot() +
+  geom_hline(yintercept=extreme_bounds, col="red") +
+  scale_x_discrete(limits=month.abb[1:12]) +
+  labs(x="Month", y="Min daily temperature (Celsius)")
+```
+
+## Counts of days above/below bounds
+
+Check how many observations fall outside of the extreme temperature bounds.
+
+```{r}
+temp_extremes_day %>%
+  dplyr::mutate(year = year(full_date)) %>%
+  dplyr::summarise(
+    n_min_below_low = sum(min_temp<extreme_bounds[1]),
+    n_max_above_high = sum(max_temp>extreme_bounds[2])
+  )
+```
+
+```{r}
+temp_extremes_day %>%
+  dplyr::mutate(year = year(full_date)) %>%
+  dplyr::summarise(
+    n_min_below_low = sum(min_temp<extreme_bounds[1]),
+    n_max_above_high = sum(max_temp>extreme_bounds[2]),
+    .by = year
+  )
+```
+
+# Accuracy of current forecast demand (30 min intervals)
+
+## Create joint dataset for analysis
+
+```{r}
+combined_dataset <- forecastdemand %>%
+  # take only the last prediction
+  dplyr::slice_max(LASTCHANGED, by=rounded_datetime) %>%
+  dplyr::select(FORECASTDEMAND, rounded_datetime) %>%
+  dplyr::inner_join(
+    totaldemand %>% dplyr::select(TOTALDEMAND, rounded_datetime),
+    by = join_by(rounded_datetime)) %>%
+  dplyr::inner_join(
+    temp %>% dplyr::select(TEMPERATURE, rounded_datetime),
+    by = join_by(rounded_datetime)) %>%
+  dplyr::mutate(
+    error = TOTALDEMAND-FORECASTDEMAND,
+    temp_control = case_when(
+      TEMPERATURE < extreme_bounds[1] ~ "Low",
+      TEMPERATURE > extreme_bounds[2] ~ "High",
+      TRUE ~ "Mid"),
+    temp_control = factor(temp_control, levels=c("Low", "Mid", "High")),
+    year = format(rounded_datetime, "%Y"))
+```
+
+## Chart, forecast vs actual demand by temperature
+
+```{r}
+mid_temp <- sum(extreme_bounds) / 2
+ggplot(combined_dataset, 
+       aes(FORECASTDEMAND, TOTALDEMAND, col=TEMPERATURE)) + 
+  geom_point() +
+  scale_color_gradient2(
+    low="blue", mid="lightyellow", high="red",
+    midpoint=med_temp,
+    breaks=c(extreme_bounds[1], mid_temp, extreme_bounds[2]))
+```
+
+```{r}
+ggplot(combined_dataset, 
+       aes(FORECASTDEMAND, TOTALDEMAND, col=TEMPERATURE)) + 
+  geom_point() +
+  scale_color_gradient2(
+    low="blue", mid="lightyellow", high="red",
+    midpoint=med_temp,
+    breaks=c(extreme_bounds[1], mid_temp, extreme_bounds[2])) +
+  facet_wrap(~temp_control)
+```
+
+## Chart, error in forecast by temperature
+
+```{r}
+ggplot(combined_dataset, 
+       aes(TEMPERATURE, error)) + 
+  geom_point()
+```
+
+```{r}
+ggplot(
+  data = combined_dataset %>%
+    dplyr::mutate(
+      # group temperatures into lots of 5
+      temp_cut = cut(TEMPERATURE, 
+                      breaks=seq(floor(min(combined_dataset$TEMPERATURE)/5)*5,
+                                 ceiling(max(combined_dataset$TEMPERATURE)/5)*5, 
+                                 5))),
+  aes(x=temp_cut, y=error, group=temp_cut)) +
+  geom_boxplot() +
+  labs(x = "Temperature range (Celsius)", y = "Forecast error")
+```
+
+## Table, mean absolute error in forecast by grouping
+
+```{r}
+combined_dataset %>%
+  dplyr::summarise(
+    mae = mean(abs(error)),
+    .by = c(temp_control, year)
+  ) %>%
+  tidyr::pivot_wider(names_from = temp_control, 
+                     values_from = mae,
+                     names_sort = T) %>%
+  dplyr::arrange(year)
+```
+```{r}
+ggplot(combined_dataset, aes(x=year, y=abs(error), 
+                             group=temp_control, fill=temp_control)) +
+  geom_bar(stat="summary", fun="mean", position="dodge")
+```
+
+```{r}
+ggplot(combined_dataset, aes(x=year, y=error^2, 
+                             group=temp_control, fill=temp_control)) +
+  geom_bar(stat="summary", fun="mean", position="dodge") +
+  labs(y = "MSE")
+```
 
