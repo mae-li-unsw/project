@@ -242,7 +242,7 @@ rm(max_hist)
 max_temp_summary
 ```
 
-
+##TEMPERATURE table
 ```{r}
 table(
   cut(TEMPERATURE, 
