@@ -476,7 +476,7 @@ ggplot(combined_dataset,
   geom_point() +
   scale_color_gradient2(
     low="blue", mid="lightyellow", high="red",
-    midpoint=med_temp,
+    midpoint=mid_temp,
     breaks=c(TEMP_LOW, mid_temp, TEMP_HIGH))
 ```
 
@@ -486,7 +486,7 @@ ggplot(combined_dataset,
   geom_point() +
   scale_color_gradient2(
     low="blue", mid="lightyellow", high="red",
-    midpoint=med_temp,
+    midpoint=mid_temp,
     breaks=c(TEMP_LOW, mid_temp, TEMP_HIGH)) +
   facet_wrap(~temp_control)
 ```
