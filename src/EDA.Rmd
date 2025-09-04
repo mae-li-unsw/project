@@ -8,6 +8,7 @@ Log:
 * 29/08/2025: Clean data, Data checks added. Basic analysis on distribution of temperatures added.
 * 31/08/2025: Updated data cleaning, added aggregation of temperatures by day. Comparison of forecast and total demand (30 min intervals).
 * 2/09/2025: Added summary of extreme temperature days and export of daily temperature data.
+* 4/09/2025: Fixed inconsistent variable names, added export of combined temperature and demand data at 30-min and daily intervals.
 
 # Set up
 ```{r}
@@ -106,7 +107,6 @@ temp <- in_temp %>%
     datetime_posixlt = as.POSIXlt(datetime_posixct, 
                                   format="%Y-%m-%d %H:%M", tz="UTC"),
     # separate out the components of potential interest
-    full_date = as.Date(datetime_posixct),
     year = 1900 + datetime_posixlt$year, # add 1900 to get calendar year
     month = 1 + datetime_posixlt$mon, # starts at 0, add 1 to get calendar month
     day = datetime_posixlt$mday,
@@ -115,7 +115,8 @@ temp <- in_temp %>%
     day_of_week = datetime_posixlt$wday,
     # time rounded to nearest half hour
     rounded_datetime = as.POSIXct(temp_datetimes_rounded,
-                                  format="%Y-%m-%d %H:%M", tz="UTC")
+                                  format="%Y-%m-%d %H:%M", tz="UTC"),
+    full_date = as.Date(rounded_datetime)
   ) %>%
   dplyr::select(-datetime_posixct, -datetime_posixlt)
 rm(temp_datetimes_rounded) # no longer needed
@@ -220,6 +221,8 @@ ggplot(temp_day, aes(x=month(full_date), y=max_temp, group=month(full_date))) +
        title="Maximum temperature per day")
 ```
 
+Get counts of daily maximum temperatures by 1 degree intervals.
+
 ```{r}
 g = 1 # grouping size
 # calculate frequency within each group
@@ -243,15 +246,6 @@ max_temp_summary
 ```
 
 
-```{r}
-table(
-  cut(TEMPERATURE, 
-      breaks=seq(floor(min(combined_dataset$TEMPERATURE)/5)*5,
-                 ceiling(max(combined_dataset$TEMPERATURE)/5)*5, 
-                 5)))
-```
-
-
 ## Minimum temperatures per day
 
 ```{r}
@@ -261,6 +255,9 @@ ggplot(temp_day, aes(x=month(full_date), y=min_temp, group=month(full_date))) +
   labs(x="Month", y="Temperature (Celsius)", 
        title="Minimum temperature per day")
 ```
+
+Get counts of daily minimum temperatures by 1 degree intervals.
+
 ```{r}
 g = 1 # grouping size
 # calculate frequency within each group
@@ -311,11 +308,14 @@ extreme_days <- temp %>%
       max_temp > TEMP_HIGH ~ "Hot",
       TRUE ~ "Normal"
     )
-  ) %>%
-  filter(extreme_flag)
-
-n_extreme_days <- nrow(extreme_days)
+  )
+# frequency by different temperature conditions
 table(extreme_days$extreme_type)
+round(table(extreme_days$extreme_type)/nrow(extreme_days), 4)
+
+# create table for only the extreme
+extreme_days <- extreme_days %>% filter(extreme_flag)
+n_extreme_days <- nrow(extreme_days)
 ```
 ```{r}
 # write extreme days summary to csv
@@ -327,20 +327,24 @@ write.csv(extreme_days,
 
 ## Extended summary of daily temperature information
 
+```{r}
+# keep only a single temperature observation for every 30-min interval
+# use the most extreme temp if above/below the low/high bounds
+# otherwise just use the last value
+temp30 <- temp %>%
+  dplyr::arrange(DATETIME) %>%
+  dplyr::summarise(min_temp = min(TEMPERATURE),
+                   max_temp = max(TEMPERATURE),
+                   latest_temp = last(TEMPERATURE),
+                   .by = c(rounded_datetime)) %>%
+  dplyr::mutate(TEMPERATURE = case_when(min_temp<TEMP_LOW ~ min_temp,
+                                        max_temp>TEMP_HIGH ~ max_temp,
+                                        TRUE ~ latest_temp),
+                full_date = date(rounded_datetime))
+```
 
 ```{r}
-temp_day_extended <- temp %>%
-  # keep only a single observation for every 30-min interval
-  # use the most extreme temp if above/below the low/high bounds
-  # otherwise just use the last value
-  dplyr::arrange(DATETIME) %>%
-  dplyr::mutate(lower_temp = min(TEMPERATURE),
-                higher_temp = max(TEMPERATURE),
-                latest_temp = last(TEMPERATURE),
-                .by = rounded_datetime) %>%
-  dplyr::mutate(TEMPERATURE = case_when(lower_temp<TEMP_LOW ~ lower_temp,
-                                        higher_temp>TEMP_HIGH ~ higher_temp,
-                                        TRUE ~ latest_temp)) %>%
+temp_day_extended <- temp30 %>%
   # calculate number of consecutive instances of high / low temperature
   dplyr::mutate(is_low = TEMPERATURE<TEMP_LOW,
                 is_high = TEMPERATURE>TEMP_HIGH) %>%
@@ -366,7 +370,7 @@ temp_day_extended <- temp %>%
     extreme_type = case_when(
       min_temp < TEMP_LOW ~ "Cold",
       max_temp > TEMP_HIGH ~ "Hot",
-      TRUE ~ NA),
+      TRUE ~ "Normal"),
     # number of intervals in the day outside the extreme bounds
     n_low = sum(TEMPERATURE<TEMP_LOW), 
     n_high = sum(TEMPERATURE>TEMP_HIGH),
@@ -452,31 +456,39 @@ combined_dataset <- forecastdemand %>%
     totaldemand %>% dplyr::select(TOTALDEMAND, rounded_datetime),
     by = join_by(rounded_datetime)) %>%
   dplyr::inner_join(
-    temp %>% 
-      # ignore observations which are taken outside of every half hour
-      dplyr::filter(mins==0 | mins==30) %>%
+    temp30 %>%
       dplyr::select(TEMPERATURE, rounded_datetime),
     by = join_by(rounded_datetime)) %>%
   dplyr::mutate(
     error = TOTALDEMAND-FORECASTDEMAND,
-    temp_control = case_when(
-      TEMPERATURE < TEMP_LOW ~ "Low",
-      TEMPERATURE > TEMP_HIGH ~ "High",
-      TRUE ~ "Mid"),
-    temp_control = factor(temp_control, c("Low", "Mid", "High")),
-    year = format(rounded_datetime, "%Y"))
+    extreme_flag = any(TEMPERATURE < TEMP_LOW | TEMPERATURE > TEMP_HIGH),
+    extreme_type = case_when(
+      TEMPERATURE < TEMP_LOW ~ "Cold",
+      TEMPERATURE > TEMP_HIGH ~ "Hot",
+      TRUE ~ "Normal"),
+    extreme_type = factor(extreme_type, c("Cold", "Normal", "Hot")),
+    year = format(rounded_datetime, "%Y")) %>%
+  dplyr::rename(DATETIME = rounded_datetime) %>%
+  dplyr::select(DATETIME, TEMPERATURE, TOTALDEMAND, FORECASTDEMAND,
+                error, extreme_flag, extreme_type, year)
 ```
+```{r}
+write.csv(combined_dataset,
+          file = here::here("data/NSW/processed", "nsw_30mins.csv"),
+          row.names = FALSE)
+```
+
 
 ## Chart, forecast vs actual demand by temperature
 
 ```{r}
 mid_temp <- sum(c(TEMP_LOW, TEMP_HIGH)) / 2
 ggplot(combined_dataset, 
-       aes(FORECASTDEMAND, TOTALDEMAND, col=TEMPERATURE)) + 
+       aes(FORECASTDEMAND, TOTALDEMAND, col=TEMPERATURE, alpha=TEMPERATURE)) + 
   geom_point() +
   scale_color_gradient2(
     low="blue", mid="lightyellow", high="red",
-    midpoint=med_temp,
+    midpoint=mid_temp,
     breaks=c(TEMP_LOW, mid_temp, TEMP_HIGH))
 ```
 
@@ -486,9 +498,9 @@ ggplot(combined_dataset,
   geom_point() +
   scale_color_gradient2(
     low="blue", mid="lightyellow", high="red",
-    midpoint=med_temp,
+    midpoint=mid_temp,
     breaks=c(TEMP_LOW, mid_temp, TEMP_HIGH)) +
-  facet_wrap(~temp_control)
+  facet_wrap(~extreme_type)
 ```
 
 ## Chart, error in forecast by temperature
@@ -519,22 +531,22 @@ ggplot(
 combined_dataset %>%
   dplyr::summarise(
     mae = mean(abs(error)),
-    .by = c(temp_control, year)
+    .by = c(extreme_type, year)
   ) %>%
-  tidyr::pivot_wider(names_from = temp_control, 
+  tidyr::pivot_wider(names_from = extreme_type, 
                      values_from = mae,
                      names_sort = T) %>%
   dplyr::arrange(year)
 ```
 ```{r}
 ggplot(combined_dataset, aes(x=year, y=abs(error), 
-                             group=temp_control, fill=temp_control)) +
+                             group=extreme_type, fill=extreme_type)) +
   geom_bar(stat="summary", fun="mean", position="dodge")
 ```
 
 ```{r}
 ggplot(combined_dataset, aes(x=year, y=error^2, 
-                             group=temp_control, fill=temp_control)) +
+                             group=extreme_type, fill=extreme_type)) +
   geom_bar(stat="summary", fun="mean", position="dodge") +
   labs(y = "MSE")
 ```
@@ -545,41 +557,52 @@ Aggregate data to a day level
 
 ```{r}
 combined_dataset_day <- combined_dataset %>%
-  dplyr::mutate(date = date(rounded_datetime),
-                month = month(rounded_datetime)) %>%
+  dplyr::mutate(date = date(DATETIME),
+                month = month(DATETIME)) %>%
   dplyr::summarise(
     # number of observations made for the day
     n_obv = n(),
     # number of intervals with high or low temp recorded
-    n_high = sum(temp_control=="High"),
-    n_low = sum(temp_control=="Low"),
+    n_hot = sum(extreme_type=="Hot"),
+    n_cold = sum(extreme_type=="Cold"),
     # find the min and max temperatures during the day
     min_temp = min(TEMPERATURE),
     max_temp = max(TEMPERATURE),
-    # find the sum of total and forecast demand during the day
+    # summarise total and forecast demand during the day
+    min_actual = min(TOTALDEMAND),
+    max_actual = max(TOTALDEMAND),
+    mean_actual = mean(TOTALDEMAND),
     sum_actual = sum(TOTALDEMAND),
+    min_forecast = min(FORECASTDEMAND),
+    max_forecast = max(FORECASTDEMAND),
+    mean_forecast = mean(FORECASTDEMAND),
     sum_forecast = sum(FORECASTDEMAND),
     # basic summary of error across whole day
     mae = mean(abs(error)),
     rmse = sqrt(mean(error^2)),
-    max_error = max(error),
+    max_abs_error = max(abs(error)), 
     # MAE for times under different temp conditions during the day
-    mae_high = mean(abs(error * (temp_control=="High"))),
-    mae_mid = mean(abs(error * (temp_control=="Mid"))),
-    mae_low = mean(abs(error * (temp_control=="Low"))),
+    mae_hot = mean(abs(error * (extreme_type=="Hot"))),
+    mae_normal = mean(abs(error * (extreme_type=="Normal"))),
+    mae_cold = mean(abs(error * (extreme_type=="Cold"))),
     # RMSE for times under different temp conditions during the day
-    rmse_high = sqrt(mean(error^2 * (temp_control=="High"))),
-    rmse_mid = sqrt(mean(error^2 * (temp_control=="Mid"))),
-    rmse_low = sqrt(mean(error^2 * (temp_control=="Low"))),
+    rmse_hot = sqrt(mean(error^2 * (extreme_type=="Hot"))),
+    rmse_normal = sqrt(mean(error^2 * (extreme_type=="Normal"))),
+    rmse_cold = sqrt(mean(error^2 * (extreme_type=="Cold"))),
     .by = c(year, month, date)
   ) %>%
   dplyr::mutate(
     # set MAE, RMSE by temp conditions to NA if there is no low/high temp
-    mae_high = if_else(n_high>0, mae_high, NA),
-    mae_low = if_else(n_low>0, mae_low, NA),
-    rmse_high = if_else(n_high>0, rmse_high, NA),
-    rmse_low = if_else(n_low>0, rmse_low, NA)
+    mae_hot = if_else(n_hot>0, mae_hot, NA),
+    mae_cold = if_else(n_cold>0, mae_cold, NA),
+    rmse_hot = if_else(n_hot>0, rmse_hot, NA),
+    rmse_cold = if_else(n_cold>0, rmse_cold, NA)
   )
+```
+```{r}
+write.csv(combined_dataset_day,
+          file = here::here("data/NSW/processed", "nsw_daily.csv"),
+          row.names = FALSE)
 ```
 
 ## Chart, max temp vs total demand
@@ -599,10 +622,13 @@ ggplot(combined_dataset_day, aes(min_temp, sum_actual)) +
 
 ```{r}
 ggplot(combined_dataset_day %>%
-         mutate(actual_pr = percent_rank(sum_actual)), 
+         mutate(actual_pr = mean_actual), 
        aes(min_temp, max_temp, col=actual_pr)) + 
   geom_point() +
-  scale_color_viridis_c()
+  scale_color_viridis_c(direction=-1) +
+  labs(x = "Minimum daily temperature",
+       y = "Maximum daily temperature",
+       col = "Mean, Actual Demand")
 ```
 
 ## Chart, error by daily min/max temperatures
@@ -621,8 +647,8 @@ ggplot(combined_dataset_day %>%
 ## Chart, scatter of MAE during normal and extreme temperatures
 
 ```{r}
-ggplot(combined_dataset_day %>% dplyr::filter(n_high>0), 
-       aes(mae_mid, mae_high, col=max_temp)) +
+ggplot(combined_dataset_day %>% dplyr::filter(n_hot>0), 
+       aes(mae_normal, mae_hot, col=max_temp)) +
   geom_point() +
   scale_color_gradient(
     low="orange", high="darkred") +
@@ -633,8 +659,8 @@ ggplot(combined_dataset_day %>% dplyr::filter(n_high>0),
 ```
 
 ```{r}
-ggplot(combined_dataset_day %>% dplyr::filter(n_low>0), 
-       aes(mae_mid, mae_low, col=min_temp)) +
+ggplot(combined_dataset_day %>% dplyr::filter(n_cold>0), 
+       aes(mae_normal, mae_cold, col=min_temp)) +
   geom_point() +
   scale_color_gradient(
     low="darkblue", high="lightblue") +
@@ -643,7 +669,6 @@ ggplot(combined_dataset_day %>% dplyr::filter(n_low>0),
        y="MAE during extreme low temp",
        col="min daily temp")
 ```
-
 
 ## Chart, boxplot of error by min/max temperature
 
