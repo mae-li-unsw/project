@@ -42,3 +42,15 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Brief Literature Review
 
+
+## Pre-processing Steps
+
+To prepare the datasets for analysis, we first standardized the DATETIME fields, which were originally stored in inconsistent formats. The original DATETIME columns were character strings in different formats: dd/mm/yyyy hh:mm in the demand and temperature files, and yyyy-mm-dd hh:mm:ss in the forecast file. These were converted into timestamps with a uniform format and a consistent time zone (UTC) to allow proper alignment and merging of records. Additional variables such as year, month, day, and day of the week were extracted to support aggregation and exploratory data analysis. For temperature data, timestamps were also rounded to the nearest half-hour so that they aligned with the demand and forecast intervals.
+
+## Data Cleaning
+
+We validated the data by checking for missing values in each column, produced descriptive summaries of the columns and boxplots to visualize the monthly distribution of temperature. To focus on extreme weather conditions relevant to our research question, thresholds of below 5°C and above 35°C were defined. Using these bounds, we exported a clean table of “extreme days”, which captures the minimum and maximum temperatures recorded on the flagged days. This table provides the basis for subsequent analysis of electricity demand and forecasting performance under normal versus extreme conditions.
+
+After cleaning, the three datasets were merged into a single combined dataset for analysis, requiring aligning all records to a consistent 30-minute interval. Temperature observations, which were recorded at irregular intervals, were rounded to the nearest half hour to match the half-hourly total demand and forecast demand series. For forecast demand, only the most recent forecast available at each interval was retained to avoid duplication from multiple update runs. The merged dataset therefore contains, for each half-hour, the actual demand, the latest forecast demand, and the corresponding temperature. This integration enabled us to directly identify forecasting errors under different temperature conditions and to compare electricity demand patterns on normal versus extreme weather days.
+
+
