@@ -9,12 +9,14 @@ Log:
 * 31/08/2025: Updated data cleaning, added aggregation of temperatures by day. Comparison of forecast and total demand (30 min intervals).
 * 2/09/2025: Added summary of extreme temperature days and export of daily temperature data.
 * 4/09/2025: Fixed inconsistent variable names, added export of combined temperature and demand data at 30-min and daily intervals.
+* 9/09/2025: Added charts showing patterns of demand based on temperature over the day.
 
 # Set up
 ```{r}
 require(readr)
 require(here)
 require(tidyverse)
+require(scales)
 ```
 
 # Load in raw data
@@ -461,7 +463,7 @@ combined_dataset <- forecastdemand %>%
     by = join_by(rounded_datetime)) %>%
   dplyr::mutate(
     error = TOTALDEMAND-FORECASTDEMAND,
-    extreme_flag = any(TEMPERATURE < TEMP_LOW | TEMPERATURE > TEMP_HIGH),
+    extreme_flag = TEMPERATURE < TEMP_LOW | TEMPERATURE > TEMP_HIGH,
     extreme_type = case_when(
       TEMPERATURE < TEMP_LOW ~ "Cold",
       TEMPERATURE > TEMP_HIGH ~ "Hot",
@@ -541,7 +543,8 @@ combined_dataset %>%
 ```{r}
 ggplot(combined_dataset, aes(x=year, y=abs(error), 
                              group=extreme_type, fill=extreme_type)) +
-  geom_bar(stat="summary", fun="mean", position="dodge")
+  geom_bar(stat="summary", fun="mean", position="dodge") +
+  labs(y = "MAE")
 ```
 
 ```{r}
@@ -608,20 +611,35 @@ write.csv(combined_dataset_day,
 ## Chart, max temp vs total demand
 
 ```{r}
-ggplot(combined_dataset_day, aes(max_temp, sum_actual)) + 
+# ignore days with under 40 observations 
+# 40 x 30 mins = at least 20 hrs in the day have been observed
+ggplot(combined_dataset_day %>% filter(n_obv>40), 
+       aes(max_temp, sum_actual)) + 
   geom_point() +
+  scale_y_continuous(labels = scales::label_number()) +
   labs(x = "Maximum daily temperature",
-       y = "Sum daily total demand")
-```
-```{r}
-ggplot(combined_dataset_day, aes(min_temp, sum_actual)) + 
-  geom_point() +
-  labs(x = "Minimum daily temperature",
-       y = "Sum daily total demand")
+       y = "Sum daily total demand",
+       main = "Total demand by daily max temperature")
 ```
 
+## Chart, max temp vs total demand
+
 ```{r}
-ggplot(combined_dataset_day %>%
+# ignore days with under 40 observations 
+# 40 x 30 mins = at least 20 hrs in the day have been observed
+ggplot(combined_dataset_day %>% filter(n_obv>40), 
+       aes(min_temp, sum_actual)) + 
+  geom_point() +
+  scale_y_continuous(labels = scales::label_number()) +
+  labs(x = "Minimum daily temperature",
+       y = "Sum daily total demand",
+       main = "Total demand by daily max temperature")
+```
+
+## Chart, demand by daily min/max temperatures
+
+```{r}
+ggplot(combined_dataset_day %>% 
          mutate(actual_pr = mean_actual), 
        aes(min_temp, max_temp, col=actual_pr)) + 
   geom_point() +
@@ -704,3 +722,119 @@ ggplot(
        y = "Daily forecast error (MAE)")
 ```
 
+## Chart, demand over the day by weather
+
+```{r}
+ggplot(combined_dataset %>% 
+         mutate(date = date(DATETIME),
+                hour = strftime(DATETIME, format="%H:%M:%S", tz="UTC"),
+                time = ymd_hms(paste("2000-01-01", hour))) %>%
+         left_join(combined_dataset_day %>% 
+                     select(date, n_hot, n_cold) %>%
+                     mutate(day_type = case_when(n_cold>0 ~ "Cold",
+                                                     n_hot>0 ~ "Hot",
+                                                     TRUE ~ "Normal")), 
+                   by = "date"),
+       aes(x = time, y = TOTALDEMAND, group = day_type, col = day_type)) +
+  geom_smooth(method="gam", formula = y ~ s(x, bs = "cs"), se=FALSE) +
+  scale_x_datetime(labels = date_format("%H:%M")) +
+  scale_color_manual(values = c("Hot" = "red",
+                                "Cold" = "blue",
+                                "Normal" = "black")) +
+  labs(title="Demand over the day")
+```
+```{r}
+f_smooth_demand_actual <- function(df, title_lab){
+  ggplot(df %>% 
+           mutate(date = date(DATETIME),
+                  hour = strftime(DATETIME, format="%H:%M:%S", tz="UTC"),
+                  time = ymd_hms(paste("2000-01-01", hour))),
+         aes(x = time, y = TOTALDEMAND)) +
+    geom_point(alpha=0.25, shape=16) +
+    geom_smooth(method="gam", formula = y ~ s(x, bs = "cs"), col="purple") +
+    scale_x_datetime(labels = date_format("%H:%M")) +
+    labs(title=title_lab)
+}
+```
+
+## Chart, demand on hot days
+```{r}
+select_date <- combined_dataset_day %>%
+  dplyr::filter(n_hot > 0) %>%
+  dplyr::pull(date)
+
+f_smooth_demand_actual(combined_dataset %>% 
+                         filter(date(DATETIME) %in% select_date), 
+                       "Total demand on Hot days")
+```
+## Chart, demand on cold days
+```{r}
+select_date <- combined_dataset_day %>%
+  dplyr::filter(n_cold > 0) %>%
+  dplyr::pull(date)
+
+f_smooth_demand_actual(combined_dataset %>% 
+                        filter(date(DATETIME) %in% select_date), 
+                      "Total demand on Cold days")
+```
+
+## Chart, temperature and demand for given day
+
+```{r}
+f_chart_day <- function(select_date, title_lab,
+                        df = combined_dataset,
+                        SCALE_DEMAND = 300){
+  ggplot(combined_dataset %>% 
+           mutate(date = date(DATETIME),
+                  time = DATETIME,
+                  t_TOTALDEMAND = TOTALDEMAND/SCALE_DEMAND,
+                  t_FORECASTDEMAND = FORECASTDEMAND/SCALE_DEMAND) %>%
+           filter(date == select_date)) +
+    geom_line(aes(x = time, y = TEMPERATURE, col="Temperature")) +
+    geom_line(aes(x = time, y = t_TOTALDEMAND, col="Total Demand")) +
+    geom_line(aes(x = time, y = t_FORECASTDEMAND, col="Forecast Demand")) +
+    scale_color_manual(values = c("Temperature"="black",
+                                  "Total Demand" = "purple",
+                                  "Forecast Demand" = "orange")) +
+    scale_y_continuous(
+      name = "Temperature",
+      sec.axis = sec_axis(trans=~.*SCALE_DEMAND, name="Demand")) +
+    labs(title=title_lab)
+}
+```
+
+### Cold days, lowest and highest demand RMSE
+```{r}
+select_date <- combined_dataset_day %>%
+  dplyr::filter(n_cold > 0) %>%
+  dplyr::slice_min(rmse) %>%
+  dplyr::pull(date)
+
+f_chart_day(select_date, "Cold day with lowest demand RMSE", SCALE_DEMAND = 600)
+```
+```{r}
+select_date <- combined_dataset_day %>%
+  dplyr::filter(n_cold > 0) %>%
+  dplyr::slice_max(rmse) %>%
+  dplyr::pull(date)
+
+f_chart_day(select_date, "Cold day with highest demand RMSE", SCALE_DEMAND = 600)
+```
+### Hot days, lowest and highest demand RMSE
+
+```{r}
+select_date <- combined_dataset_day %>%
+  dplyr::filter(n_hot > 0) %>%
+  dplyr::slice_min(rmse) %>%
+  dplyr::pull(date)
+
+f_chart_day(select_date, "Hot day with lowest demand RMSE")
+```
+```{r}
+select_date <- combined_dataset_day %>%
+  dplyr::filter(n_hot > 0) %>%
+  dplyr::slice_max(rmse) %>%
+  dplyr::pull(date)
+
+f_chart_day(select_date, "Hot day with highest demand RMSE")
+```
