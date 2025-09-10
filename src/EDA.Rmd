@@ -1,6 +1,9 @@
 ---
 title: "Exploratory Data Analysis"
-output: html_notebook
+output:
+  pdf_document: 
+    latex_engine: xelatex
+  html_notebook: default
 ---
 
 Log:
@@ -10,6 +13,7 @@ Log:
 * 2/09/2025: Added summary of extreme temperature days and export of daily temperature data.
 * 4/09/2025: Fixed inconsistent variable names, added export of combined temperature and demand data at 30-min and daily intervals.
 * 9/09/2025: Added charts showing patterns of demand based on temperature over the day.
+* 10/09/2025: Reviewing and extending EDA for model development.
 
 # Set up
 ```{r}
@@ -22,13 +26,14 @@ require(scales)
 # Load in raw data
 The `forecastdemand_nsw.csv.zip.partaa` and `forecastdemand_nsw.csv.zip.partab` files were manually extracted using `7-Zip` then re-zipped into the `forecastdemand_nsw.csv.zip` file.
 
+<!-- summary -->
+We load three raw input datasets from AEMO. The **temperature dataset** (`temperature_nsw.csv.zip`) contains 220,326 rows and 3 columns (LOCATION, DATETIME, TEMPERATURE). The **total demand dataset** (`totaldemand_nsw.csv.zip`) contains 196,513 rows and 3 columns (DATETIME, REGIONID, TOTALDEMAND). The **forecast demand dataset** (`forecastdemand_nsw.csv.zip`) is the largest, with about 10.9 million rows and 6 columns (REGIONID, PREDISPATCHSEQNO, PERIODID, FORECASTDEMAND, LASTCHANGED, DATETIME). These three datasets together provide the recorded weather, observed demand, and forecast demand values that underpin the subsequent cleaning, merging, and exploratory analysis of demand under extreme weather conditions.
+
+
 ```{r}
-in_temp <- readr::read_csv(here::here("data/NSW", 
-                                      "temperature_nsw.csv.zip"))
-in_totaldemand <- readr::read_csv(here::here("data/NSW", 
-                                             "totaldemand_nsw.csv.zip"))
-in_forecastdemand <- readr::read_csv(here::here("data/NSW",
-                                                "forecastdemand_nsw.csv.zip"))
+in_temp <- readr::read_csv(here::here("data/NSW", "temperature_nsw.csv.zip"))
+in_totaldemand <- readr::read_csv(here::here("data/NSW", "totaldemand_nsw.csv.zip"))
+in_forecastdemand <- readr::read_csv(here::here("data/NSW", "forecastdemand_nsw.csv.zip"))
 ```
 
 # Data check
@@ -57,7 +62,6 @@ summary(in_forecastdemand)
 summary(in_temp)
 ```
 
-
 As there is only a single region/location included in each dataset, this can be ignored for the purposes of analysis.
 
 ```{r}
@@ -65,6 +69,9 @@ table(in_totaldemand$REGIONID)
 table(in_forecastdemand$REGIONID)
 table(in_temp$LOCATION)
 ```
+
+<!-- summary -->
+We performed initial quality checks on the three datasets. The total demand dataset contains 196,513 records, the forecast demand dataset about 10.9 million records, and the temperature dataset 220,326 records. Importantly, no missing values were detected in any of the columns, indicating that the data are complete and reliable for analysis. Summary statistics show that total demand values range from 5,075 MW to 14,580 MW (median ~8,053 MW), forecast demand values from 4,422 MW to 14,737 MW (median ~8,008 MW), and recorded temperatures from –1.3 °C to 44.7 °C (median ~17.7 °C). Each dataset covers a single region (NSW1) or location (Bankstown), simplifying analysis by removing the need to account for multiple regional identifiers. These results confirm that the datasets are well structured and suitable for merging and subsequent exploratory analysis.
 
 
 # Clean data
@@ -145,6 +152,9 @@ forecastdemand <- in_forecastdemand %>%
   dplyr::select(-datetime_posixct, -datetime_posixlt)
 ```
 
+<!-- summary -->
+To prepare the datasets for analysis, all datetime strings were converted into standardised POSIX formats with UTC as the reference timezone, ensuring consistency and avoiding daylight savings issues. From these cleaned timestamps we extracted calendar features including year, month, day, hour, minute, and day of the week, which provide valuable inputs for temporal analysis and modelling. Since electricity demand and forecast data are reported in 30-minute intervals, temperature observations were rounded to the nearest half hour to align them on the same time grid. For the forecast dataset, both the observation time and the forecast update time were parsed, enabling later investigation of how forecast accuracy evolves over time. These steps ensure that the demand, forecast, and temperature datasets are fully synchronised and enriched with key temporal features for subsequent exploratory and modelling tasks.
+
 # Data check
 
 Check if there are NAs in the cleaned data.
@@ -164,6 +174,14 @@ summary(temp)
 ```
 
 The cleaned data appears to be all complete with no missing values.
+
+<!-- summary -->
+## Dataset quality and preparation
+The cleaned datasets show excellent data quality for analysis. No missing values were detected across the total demand, forecast demand, or temperature records, and all engineered datetime features (year, month, day, hour, weekday, rounded half-hour timestamp) were successfully derived. The coverage spans from 2010 to 2021 at half-hourly resolution, yielding a complete and temporally consistent dataset. By standardising datetime to UTC and aligning all series to 30-minute intervals, the datasets are now synchronised and ready for integration, ensuring robust foundations for both exploratory and modelling stages.
+
+## Dataset characteristics and link to forecasting under extreme weather
+The dataset provides a detailed view of electricity demand and weather variation in New South Wales, which is central to evaluating forecasting performance under extreme weather conditions. Observed demand ranges from 5,075 MW to 14,580 MW, with a median of approximately 8,053 MW, reflecting typical operational levels and seasonal peaks. Forecast demand spans 4,422 MW to 14,737 MW, with a median of about 8,008 MW, closely matching the observed distribution and showing that existing forecasts capture general demand patterns. A preliminary comparison, however, reveals small mismatches at the upper and lower ends of the demand range, indicating that forecasting models may not fully capture unusual highs or lows in demand. This observation directly connects to the project objective of examining how forecasting accuracy changes under hot and cold weather days, when demand behaves differently from its usual profile. Temperature records range from –1.3 °C to 44.7 °C, with a median near 17.7 °C, covering both severe cold and hot days that form the focus of this study. With over a decade of half-hourly data, the dataset captures both long-term seasonal cycles and short-term variability, providing a strong foundation for analysing forecast accuracy under extreme weather.
+
 
 ## Daily temperature
 
@@ -191,6 +209,10 @@ write.csv(temp_day,
           row.names = FALSE)
 ```
 
+<!-- summary -->
+To support the classification of extreme weather days, the half-hourly temperature records were aggregated into daily summaries. For each day, the minimum and maximum temperatures were identified, together with the number of observations and the times at which the extremes occurred. This daily dataset, saved as daily_min_max.csv, provides the foundation for defining hot days (based on maximum temperature) and cold days (based on minimum temperature). By condensing millions of half-hourly records into concise daily indicators, this step ensures that the temperature data can be directly linked with demand and forecast errors in subsequent analyses of forecasting performance under extreme weather conditions.
+
+
 # Distribution of temperature
 
 ## All temperatures recorded
@@ -201,6 +223,10 @@ ggplot(temp, aes(x=month, y=TEMPERATURE, group=month)) +
   scale_x_discrete(limits=month.abb[1:12]) +
   labs(x="Month", y="Temperature (Celsius)")
 ```
+
+<!-- summary -->
+The distribution of half-hourly temperature observations across months highlights the strong seasonal cycle in New South Wales. Median temperatures range from approximately 11–15 °C in winter (June–August) to 21–23 °C in summer (December–February). Extreme values are also evident, with summer observations exceeding 40 °C and winter temperatures falling close to 0 °C. The wider spread of summer distributions indicates greater variability and a higher likelihood of hot extremes, whereas winter temperatures are generally more stable with occasional cold outliers. These results confirm that the dataset captures both seasonal patterns and extreme conditions, providing a sound basis for classifying hot and cold days in subsequent analyses.
+
 
 ## Chart, density of daily min & max temps
 
@@ -213,6 +239,11 @@ ggplot(temp_day) +
        title="Distribution of min and max daily temperatures")
 ```
 
+<!-- summary -->
+The density distributions of daily minimum and maximum temperatures confirm that the dataset covers a broad range of weather conditions. Daily minimums are typically between 12–15 °C but include values below 5 °C, consistent with cold days, while daily maximums peak around 20–25 °C but extend beyond 40 °C, capturing hot extremes. These results confirm that both cold and hot extremes are represented in the dataset, providing a robust basis for classifying extreme weather days and evaluating electricity demand forecasts under those conditions.
+
+
+
 ## Maximum temperatures per day
 
 ```{r}
@@ -222,6 +253,10 @@ ggplot(temp_day, aes(x=month(full_date), y=max_temp, group=month(full_date))) +
   labs(x="Month", y="Temperature (Celsius)", 
        title="Maximum temperature per day")
 ```
+
+<!-- summary -->
+The distribution of daily maximum temperatures by month highlights the expected seasonal cycle in New South Wales. Summer months (December–February) show the highest daily maximums, with medians around 27–28 °C and frequent hot days above 35 °C, including outliers exceeding 40 °C. Winter months (June–July) are much cooler, with medians near 17–18 °C and narrower variability. The widest spread occurs during peak summer (December–January), reflecting both typical warm days and severe heat events. Spring and autumn months show intermediate values with more moderate variability, marking the transition between the stable winter period and the highly variable summer extremes. These patterns confirm that the dataset captures both seasonal behaviour and the occurrence of hot extremes, which are particularly relevant for analysing electricity demand forecasting under summer heat events.
+
 
 Get counts of daily maximum temperatures by 1 degree intervals.
 
@@ -257,6 +292,10 @@ ggplot(temp_day, aes(x=month(full_date), y=min_temp, group=month(full_date))) +
   labs(x="Month", y="Temperature (Celsius)", 
        title="Minimum temperature per day")
 ```
+
+<!-- summary -->
+The distribution of daily minimum temperatures by month highlights the seasonal cycle in New South Wales. Summer months (December–February) record the highest night-time minimums, with medians around 18–20 °C, while winter months (June–July) drop to medians near 6–7 °C, with occasional days falling below freezing. 
+
 
 Get counts of daily minimum temperatures by 1 degree intervals.
 
@@ -325,6 +364,9 @@ write.csv(extreme_days,
           file = here::here("data/NSW/processed", "extreme_days_summary.csv"),
           row.names = FALSE)
 ```
+
+<!-- summary -->
+Using thresholds of 5 °C for cold extremes and 35 °C for hot extremes, the dataset was classified into cold, hot, and normal days. Out of 4,092 days, 355 days (8.6%) were cold, 76 days (1.9%) were hot, and the remaining 3,661 days (89.5%) were normal. This confirms that extreme weather events make up only a small fraction of the dataset, with cold extremes more frequent than hot extremes. The strong imbalance between normal and extreme conditions is a key factor for this study, as it helps explain why forecasting models, trained predominantly on normal weather, may underperform when applied to rare hot or cold days that drive unusual demand behaviour.
 
 
 ## Extended summary of daily temperature information
@@ -395,6 +437,9 @@ write.csv(temp_day_extended,
           row.names = FALSE)
 ```
 
+<!-- summary --> 
+To better understand the relationship between extreme weather and demand, we extended the temperature dataset to capture not only daily minimum and maximum values, but also the frequency, duration, and timing of extreme intervals. These derived features (e.g., number of half-hour periods above 35 °C, maximum consecutive extreme runs, timing of first and last extremes) can be incorporated into forecasting models as explanatory variables. They also enable finer-grained evaluation of model accuracy, distinguishing between short bursts of heat and prolonged multi-hour extremes, or between early- and late-day events. This provides a richer basis for analysing why forecasting models struggle under certain types of extreme conditions.
+
 
 ## Boxplots of min/max temperatures
 
@@ -420,6 +465,11 @@ ggplot(temp_day_extended,
   labs(x="Month", y="Min daily temperature (Celsius)")
 ```
 
+<!-- summary -->
+The boxplots of daily maximum and minimum temperatures clearly demonstrate the seasonal clustering of extreme events. Hot extremes (≥ 35 °C) occur almost exclusively in summer, with outliers above 40 °C concentrated in January and February. In contrast, cold extremes (≤ 5 °C) are observed mainly during winter, with occasional sub-zero minimums in July and August. Transitional months show greater variability but rarely breach the thresholds.
+
+
+
 ## Counts of days above/below bounds
 
 Check how many observations fall outside of the extreme temperature bounds; should still be the same as `extreme_days`.
@@ -433,6 +483,10 @@ temp_day_extended %>%
   )
 ```
 
+<!-- summary -->
+A verification step confirmed that the counts of extreme days matched earlier results: 355 cold days (minimum ≤ 5 °C) and 76 hot days (maximum ≥ 35 °C). This consistency check ensured that subsequent data transformations preserved the correct classification of extremes.
+
+
 Split observations by year to see if there are particular years with higher number of low temperature and/or high temperature days.
 
 ```{r}
@@ -444,6 +498,10 @@ temp_day_extended %>%
     .by = year
   )
 ```
+
+<!-- summary -->
+The year-wise breakdown of extreme events highlights their rarity and imbalance. Cold extremes (daily minimum ≤ 5 °C) occur fairly consistently, with 20–40 days each year, confirming their regularity in winter seasons. In contrast, hot extremes (daily maximum ≥ 35 °C) are highly variable and infrequent, ranging from 1 to 12 days per year, concentrated in particularly hot summers such as 2017. This asymmetry reinforces the dataset imbalance: forecasting models will have many more cold days to learn from than hot days, even though hot extremes tend to drive the most volatile demand. These findings underline the importance of testing model performance separately for hot and cold events, since their frequency and demand implications differ substantially.
+
 
 # Accuracy of current forecast demand (30 min intervals)
 
@@ -480,6 +538,10 @@ write.csv(combined_dataset,
           row.names = FALSE)
 ```
 
+<!-- summary -->
+To evaluate the accuracy of existing forecast demand, we created a joint dataset that combines half-hourly observations of actual demand, forecast demand, and temperature. For each 30-minute interval, the dataset records the forecast error and classifies the period as Hot, Cold, or Normal depending on whether the temperature falls outside the 5 °C and 35 °C thresholds. This consolidated dataset forms the basis for analysing whether forecast performance differs systematically under extreme conditions. It also provides the baseline against which alternative machine learning models will be compared.
+
+
 
 ## Chart, forecast vs actual demand by temperature
 
@@ -494,6 +556,10 @@ ggplot(combined_dataset,
     breaks=c(TEMP_LOW, mid_temp, TEMP_HIGH))
 ```
 
+<!-- summary -->
+Overall, forecast and actual demand are strongly correlated, confirming that forecasts capture broad demand dynamics. However, deviations widen during high-demand, hot-weather conditions, suggesting that extreme heat introduces systematic errors in the forecasts.
+
+
 ```{r}
 ggplot(combined_dataset, 
        aes(FORECASTDEMAND, TOTALDEMAND, col=TEMPERATURE)) + 
@@ -505,27 +571,100 @@ ggplot(combined_dataset,
   facet_wrap(~extreme_type)
 ```
 
-## Chart, error in forecast by temperature
+<!-- summary -->
+These scatter plots compare forecast and actual demand, split by temperature category. Cold days show points tightly clustered around the diagonal, suggesting smaller forecast deviations. Normal days cover most observations and therefore appear denser. Hot days show the largest divergence, particularly at high demand levels, where forecasts tend to underestimate actual demand. 
+
+
+
+## Analysis, error in forecast by temperature
 
 ```{r}
-ggplot(combined_dataset, 
-       aes(TEMPERATURE, error)) + 
-  geom_point()
+error_by_temp <- combined_dataset %>%
+  mutate(temp_bin = cut(TEMPERATURE, breaks=seq(-5,45,5))) %>%
+  group_by(temp_bin) %>%
+  summarise(
+    mae = mean(abs(error), na.rm=TRUE),
+    rmse = sqrt(mean(error^2, na.rm=TRUE)),
+    n = n()
+  )
+
+print(error_by_temp)
+
 ```
 
+<!-- summary -->
+Error by Temperature Bin (table of MAE/RMSE by 5 °C ranges)
+* The results show that forecast errors remain relatively stable (around 59–66 MW MAE) in (-5, 25].
+* Errors increase as temperatures rise above 25 °C, with MAE reaching ~72 MW (25–30], ~89 MW (30–35], ~117 MW (35–40], and ~137 MW (40–45].
+* RMSE values follow the same trend, peaking at nearly 190 MW for the hottest days.
+* This indicates a clear degradation in forecast performance as temperatures become extreme, especially above 35 °C.
+
+
+
 ```{r}
-ggplot(
-  data = combined_dataset %>%
-    dplyr::mutate(
-      # group temperatures into lots of 5
-      temp_cut = cut(TEMPERATURE, 
-                      breaks=seq(floor(min(combined_dataset$TEMPERATURE)/5)*5,
-                                 ceiling(max(combined_dataset$TEMPERATURE)/5)*5, 
-                                 5))),
-  aes(x=temp_cut, y=error, group=temp_cut)) +
-  geom_boxplot() +
-  labs(x = "Temperature range (Celsius)", y = "Forecast error")
+ggplot(error_by_temp, aes(x=temp_bin, y=mae)) +
+  geom_col(fill="skyblue") +
+  labs(x="Temperature bin (°C)", y="Mean Absolute Error (MW)",
+       title="Forecast MAE across temperature ranges")
 ```
+<!-- summary -->
+MAE by Temperature Bin
+* The plot provides a visual confirmation of the table: errors are lowest and stable at moderate ranges (-5 ~ 25], but they rise sharply beyond 30 °C.
+* This makes it easy to see that forecast models struggle most in the hottest temperature bins.
+
+
+```{r}
+ggplot(error_by_temp, aes(x=temp_bin, y=rmse)) +
+  geom_col(fill="tomato") +
+  labs(x="Temperature bin (°C)", y="Root Mean Square Error (MW)",
+       title="Forecast RMSE across temperature ranges")
+```
+<!-- summary -->
+RMSE by Temperature Bin 
+* RMSE shows the same pattern but highlights the spread of large individual errors.
+* At (35–40] and (40–45], RMSE is considerably higher than MAE, indicating that extreme hot days not only increase average error but also produce more large forecast misses. * At very high temperatures, the demand is harder to predict and more volatile, leading to occasional very large forecast errors. RMSE highlights these big outliers, so it rises much faster than MAE.
+
+```{r}
+error_by_cat <- combined_dataset %>%
+  group_by(extreme_type) %>%   # Cold / Normal / Hot
+  summarise(
+    mae = mean(abs(error), na.rm=TRUE),
+    rmse = sqrt(mean(error^2, na.rm=TRUE)),
+    n = n()
+  )
+
+print(error_by_cat)
+
+ggplot(error_by_cat, aes(x=extreme_type, y=mae, fill=extreme_type)) +
+  geom_col() +
+  labs(x="Day type", y="Mean Absolute Error (MW)",
+       title="Forecast MAE by Cold / Normal / Hot categories") +
+  scale_fill_manual(values = c("Hot" = "tomato",
+                                "Cold" = "skyblue",
+                                "Normal" = "orchid"))
+```
+<!-- summary -->
+Error by Category: Cold / Normal / Hot
+* Normal days (5–35 °C): MAE ~60 MW, the lowest error category.
+* Cold days (< 5 °C): MAE is very similar (~59 MW), suggesting forecasts are not much worse under cold extremes.
+* Hot days (> 35 °C): MAE jumps to ~120 MW, nearly double the error of normal/cold days.
+* This confirms that forecast degradation is strongly asymmetrical: hot extremes are much more problematic than cold extremes.
+
+
+```{r}
+# RMSE by Cold / Normal / Hot categories
+ggplot(error_by_cat, aes(x = extreme_type, y = rmse, fill = extreme_type)) +
+  geom_col() +
+  labs(x = "Day type",
+       y = "Root Mean Square Error (MW)",
+       title = "Forecast RMSE by Cold / Normal / Hot categories") +
+  scale_fill_manual(values = c("Hot" = "tomato",
+                                "Cold" = "skyblue",
+                                "Normal" = "orchid"))
+```
+<!-- summary -->
+The comparison of forecast errors across day types reveals that hot days present the greatest forecasting challenge. While cold (≤ 5 °C) and normal (5–35 °C) days show similar root mean square errors (around 80–85 MW), forecasts on hot days (≥ 35 °C) exhibit RMSE values of roughly 170 MW—more than double those of the other categories. This indicates that extreme heat introduces substantially larger and more volatile errors, consistent with demand surges from cooling loads and heightened grid stress. These results highlight that extreme hot weather is the most critical regime for assessing and improving demand forecasting accuracy.
+
 
 ## Table, mean absolute error in forecast by grouping
 
@@ -544,15 +683,12 @@ combined_dataset %>%
 ggplot(combined_dataset, aes(x=year, y=abs(error), 
                              group=extreme_type, fill=extreme_type)) +
   geom_bar(stat="summary", fun="mean", position="dodge") +
+  scale_fill_manual(values = c("Hot" = "tomato",
+                                "Cold" = "skyblue",
+                                "Normal" = "orchid")) +
   labs(y = "MAE")
 ```
 
-```{r}
-ggplot(combined_dataset, aes(x=year, y=error^2, 
-                             group=extreme_type, fill=extreme_type)) +
-  geom_bar(stat="summary", fun="mean", position="dodge") +
-  labs(y = "MSE")
-```
 
 # Accuracy of current forecast demand (day)
 
@@ -619,7 +755,7 @@ ggplot(combined_dataset_day %>% filter(n_obv>40),
   scale_y_continuous(labels = scales::label_number()) +
   labs(x = "Maximum daily temperature",
        y = "Sum daily total demand",
-       main = "Total demand by daily max temperature")
+       title = "Total demand by daily max temperature")
 ```
 
 ## Chart, max temp vs total demand
@@ -633,7 +769,7 @@ ggplot(combined_dataset_day %>% filter(n_obv>40),
   scale_y_continuous(labels = scales::label_number()) +
   labs(x = "Minimum daily temperature",
        y = "Sum daily total demand",
-       main = "Total demand by daily max temperature")
+       title = "Total demand by daily min temperature")
 ```
 
 ## Chart, demand by daily min/max temperatures
@@ -738,9 +874,9 @@ ggplot(combined_dataset %>%
        aes(x = time, y = TOTALDEMAND, group = day_type, col = day_type)) +
   geom_smooth(method="gam", formula = y ~ s(x, bs = "cs"), se=FALSE) +
   scale_x_datetime(labels = date_format("%H:%M")) +
-  scale_color_manual(values = c("Hot" = "red",
-                                "Cold" = "blue",
-                                "Normal" = "black")) +
+  scale_color_manual(values = c("Hot" = "tomato",
+                                "Cold" = "skyblue",
+                                "Normal" = "orchid")) +
   labs(title="Demand over the day")
 ```
 ```{r}
@@ -751,7 +887,7 @@ f_smooth_demand_actual <- function(df, title_lab){
                   time = ymd_hms(paste("2000-01-01", hour))),
          aes(x = time, y = TOTALDEMAND)) +
     geom_point(alpha=0.25, shape=16) +
-    geom_smooth(method="gam", formula = y ~ s(x, bs = "cs"), col="purple") +
+    geom_smooth(method="gam", formula = y ~ s(x, bs = "cs"), col="seagreen") +
     scale_x_datetime(labels = date_format("%H:%M")) +
     labs(title=title_lab)
 }
@@ -794,8 +930,8 @@ f_chart_day <- function(select_date, title_lab,
     geom_line(aes(x = time, y = t_TOTALDEMAND, col="Total Demand")) +
     geom_line(aes(x = time, y = t_FORECASTDEMAND, col="Forecast Demand")) +
     scale_color_manual(values = c("Temperature"="black",
-                                  "Total Demand" = "purple",
-                                  "Forecast Demand" = "orange")) +
+                                  "Total Demand" = "seagreen",
+                                  "Forecast Demand" = "plum")) +
     scale_y_continuous(
       name = "Temperature",
       sec.axis = sec_axis(trans=~.*SCALE_DEMAND, name="Demand")) +
