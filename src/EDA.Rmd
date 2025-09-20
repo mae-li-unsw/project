@@ -14,6 +14,7 @@ Log:
 * 4/09/2025: Fixed inconsistent variable names, added export of combined temperature and demand data at 30-min and daily intervals.
 * 9/09/2025: Added charts showing patterns of demand based on temperature over the day.
 * 10/09/2025: Reviewing and extending EDA for model development.
+* 20/09/2025: Added analysis on forecast lead-time.
 
 # Set up
 ```{r}
@@ -211,6 +212,37 @@ write.csv(temp_day,
 
 <!-- summary -->
 To support the classification of extreme weather days, the half-hourly temperature records were aggregated into daily summaries. For each day, the minimum and maximum temperatures were identified, together with the number of observations and the times at which the extremes occurred. This daily dataset, saved as daily_min_max.csv, provides the foundation for defining hot days (based on maximum temperature) and cold days (based on minimum temperature). By condensing millions of half-hourly records into concise daily indicators, this step ensures that the temperature data can be directly linked with demand and forecast errors in subsequent analyses of forecasting performance under extreme weather conditions.
+
+# Lead times in provided forecasts
+
+Check what is the earliest forecast available for each timeslot.
+
+```{r}
+forecast_leads <- forecastdemand %>%
+  # calculate lead time in hours
+  dplyr::mutate(forecast_lead = difftime(DATETIME, LASTCHANGED, 
+                                         units="hours"),
+                forecast_lead = round(as.numeric(forecast_lead), 1)) %>%
+  # isolate the hour of the day
+  # to compare across the same time period each day
+  dplyr::mutate(hour = strftime(DATETIME, format="%H:%M:%S", tz="UTC"),
+                time = ymd_hms(paste("2000-01-01", hour))) %>%
+  # calculate min and max lead times for each time period
+  dplyr::summarise(min_lead = min(forecast_lead, na.rm=T),
+                   max_lead = max(forecast_lead, na.rm=T),
+                   .by = time)
+```
+```{r}
+ggplot() +
+  geom_bar(data = forecast_leads, aes(x=time, y=max_lead), stat="identity") + 
+  geom_hline(yintercept = 24, col = "red") +
+  labs(title = "Maximum forecast lead time by time of day",
+       y = "Lead time",
+       x = "Time of day") +
+  scale_x_datetime(labels = date_format("%H:%M"))
+```
+<!-- summary -->
+Between 4:30am and noon, the forecast lead time is under 24 hours. The earliest forecast provided for 4:30am is at maximum 16 hours prior i.e., from 12:30pm the previous day. The last provided forecast is generally made around half an hour prior to the actual timestamp.
 
 
 # Distribution of temperature
