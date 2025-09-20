@@ -1,0 +1,195 @@
+---
+title: "XGBoost Models"
+---
+
+```{r}
+require(readr)
+require(here)
+require(tidyverse)
+require(xgboost)
+```
+
+# Data set-up
+
+## Load features
+```{r}
+in_processed <- readr::read_csv(here::here("data/NSW/processed","nsw_demand_features.zip"))
+```
+
+## Check features
+```{r}
+summary(in_processed)
+```
+```{r}
+# set name for first column
+colnames(in_processed)[1] <- "timestamp"
+```
+
+## Split data
+```{r}
+# get just the features for modelling
+features <- in_processed %>% 
+  select(
+    # remove full timestamp
+    -timestamp,
+    # remove temperature-based flags
+    -is_hot_slot, -is_cold_slot, -is_cold_day, -is_normal_day, -is_hot_day,
+    # remove target
+    -y, -y_forecast_latest, -y_forecast_24h)
+# get just the target
+target <- in_processed %>% select(date, y)
+
+# split into training, validation, and test set
+# training set from 2010 to 2017
+train_x <- data.matrix(features %>% 
+                         filter(year(date) <= 2017) %>% 
+                         select(-date))
+train_y <- data.matrix(target %>% 
+                         filter(year(date) <= 2017) %>% 
+                         select(-date))
+
+# validation set on 2018
+val_x <- data.matrix(features %>% 
+                         filter(year(date) == 2018) %>% 
+                         select(-date))
+val_y <- data.matrix(target %>% 
+                         filter(year(date) == 2018) %>% 
+                         select(-date))
+
+# test set on 2019 to 2021
+test_x <- data.matrix(features %>% 
+                         filter(year(date) >= 2019) %>% 
+                         select(-date))
+test_y <- data.matrix(target %>% 
+                         filter(year(date) >= 2019) %>% 
+                         select(-date))
+```
+```{r}
+#fit XGBoost model to training set
+xgb_train = xgb.DMatrix(data = train_x, label = train_y)
+xgb_val = xgb.DMatrix(data = val_x, label = val_y)
+xgb_test = xgb.DMatrix(data = test_x, label = test_y)
+
+#define watchlist
+watchlist = list(train=xgb_train, test=xgb_test)
+```
+
+# Selecting hyperparameters
+
+```{r}
+search_grid <- expand.grid(max_depth = 4,
+                           eta = c(0.01, 0.05, 0.1))
+
+best_rmse <- Inf
+best_params <- list()
+
+for (i in 1:nrow(search_grid)) {
+  test_params <- list(
+    eval_metric = "rmse",
+    max_depth = search_grid$max_depth[i],
+    eta = search_grid$eta[i]
+  )
+  
+  test_model <- xgboost(data = xgb_train, 
+                        params = test_params,
+                        nrounds = 2000,
+                        early_stopping_rounds = 10,
+                        gamma = 0.7,
+                        subsample = 0.5,
+                        verbose = 0)
+  
+  # use model to make predictions on validation set
+  pred_y = predict(test_model, val_x)
+  mean_rmse <- sqrt(mean((pred_y-val_y)^2))
+  # update if performs better than current best model
+  if (mean_rmse < best_rmse) {
+    best_rmse <- mean_rmse
+    best_params <- test_params
+  }
+}
+```
+```{r}
+#fit XGBoost model and display training and testing data at each round
+set.seed(1234)
+model = xgb.train(
+  params = best_params,
+  data = xgb_train,
+  print_every_n = 100, 
+  early_stopping_rounds = 10,
+  gamma = 0.7,
+  subsample = 0.5,
+  watchlist=watchlist, 
+  nrounds = 2000)
+```
+
+```{r}
+train_col = "springgreen4"
+test_col = "lightcoral"
+```
+
+```{r}
+n <- model$niter
+ggplot() +
+  geom_line(aes(x = model$evaluation_log$iter[20:n],
+                y = model$evaluation_log$train_rmse[20:n],
+                col = "train")) +
+  geom_line(aes(x = model$evaluation_log$iter[20:n],
+                y = model$evaluation_log$test_rmse[20:n],
+                col = "test")) +
+  scale_color_manual(values = c("train" = train_col,
+                                "test" = test_col)) +
+  labs(x = "Number of iterations",
+       y = "RMSE",
+       title = "XGBoost RMSE")
+```
+
+
+# Final model
+Use the best hyperparameters as defined above
+```{r}
+#define final model
+final = xgboost(params = best_params,
+                data = xgb_train,
+                print_every_n = 100, 
+                early_stopping_rounds = 10,
+                gamma = 0.7,
+                subsample = 0.5,
+                nrounds = 2000,
+                verbose=0)
+```
+
+
+# Evaluating the model
+```{r}
+#use model to make predictions on test data
+pred_y = predict(final, test_x)
+test_err <- test_y - pred_y
+#measure prediction accuracy
+mean((test_err)^2) #mse
+mean(abs(test_err)) #mae
+sqrt(mean((test_err)^2)) #rmse
+```
+```{r}
+ggplot() +
+  geom_point(aes(x = test_y,
+                 y = pred_y)) +
+  labs(x = "Actual demand",
+       y = "Predicted demand")
+```
+```{r}
+ggplot() +
+  geom_point(aes(x = as.data.frame(test_x)$temp,
+                 y = pred_y)) +
+  labs(x = "Temperature",
+       y = "Predicted demand")
+```
+
+```{r}
+ggplot() +
+  geom_point(aes(x = as.data.frame(test_x)$temp,
+                 y = test_err)) +
+  labs(x = "Temperature",
+       y = "Forecast error")
+```
+
+
