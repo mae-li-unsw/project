@@ -400,6 +400,43 @@ write.csv(extreme_days,
 <!-- summary -->
 Using thresholds of 5 °C for cold extremes and 35 °C for hot extremes, the dataset was classified into cold, hot, and normal days. Out of 4,092 days, 355 days (8.6%) were cold, 76 days (1.9%) were hot, and the remaining 3,661 days (89.5%) were normal. This confirms that extreme weather events make up only a small fraction of the dataset, with cold extremes more frequent than hot extremes. The strong imbalance between normal and extreme conditions is a key factor for this study, as it helps explain why forecasting models, trained predominantly on normal weather, may underperform when applied to rare hot or cold days that drive unusual demand behaviour.
 
+To visualize the imbalanced compositions of extreme temperature events in the temperature dataset.
+```{r}
+# classify each day
+temp_day_classified <- temp_day_extended %>%
+  mutate(category = case_when(
+    max_temp > 30 ~ "Hot",
+    min_temp < 5  ~ "Cold",
+    TRUE          ~ "Normal"
+  ))
+summary_counts <- temp_day_classified %>%
+  count(category) %>%
+  mutate(percentage = n / sum(n) * 100)
+summary_counts
+
+ggplot(summary_counts, aes(x = category, y = percentage, fill = category)) +
+  geom_bar(stat = "identity", width = 0.6, color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 5) +
+  scale_fill_manual(values = c("Cold" = "skyblue", "Normal" = "lightgreen", "Hot" = "tomato")) +
+  labs(
+    title = "Distribution of Cold, Normal, and Hot Days",
+    x = "Category",
+    y = "Percentage of Total Days"
+  ) +
+  theme_minimal(base_size = 14)
+
+ggplot(temp_day_classified, aes(x = month(full_date, label = TRUE), fill = category)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(values = c("Cold" = "skyblue", "Normal" = "lightgreen", "Hot" = "tomato")) +
+  labs(
+    title = "Monthly Composition of Cold, Normal, and Hot Days",
+    x = "Month", y = "Proportion"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
 
 ## Extended summary of daily temperature information
 
