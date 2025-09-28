@@ -358,7 +358,7 @@ First set the minimum and maximum temperatures considered as 'extreme' for the p
 
 ```{r}
 TEMP_LOW = 5
-TEMP_HIGH = 35
+TEMP_HIGH = 30
 ```
 
 ## Summary of days with extreme temperature events
@@ -398,7 +398,7 @@ write.csv(extreme_days,
 ```
 
 <!-- summary -->
-Using thresholds of 5 °C for cold extremes and 35 °C for hot extremes, the dataset was classified into cold, hot, and normal days. Out of 4,092 days, 355 days (8.6%) were cold, 76 days (1.9%) were hot, and the remaining 3,661 days (89.5%) were normal. This confirms that extreme weather events make up only a small fraction of the dataset, with cold extremes more frequent than hot extremes. The strong imbalance between normal and extreme conditions is a key factor for this study, as it helps explain why forecasting models, trained predominantly on normal weather, may underperform when applied to rare hot or cold days that drive unusual demand behaviour.
+Using thresholds of 5 °C for cold extremes and 30 °C for hot extremes, the dataset was classified into cold, hot, and normal days. Out of 4,092 days, 355 days (8.6%) were cold, 343 days (8.4%) were hot, and the remaining 3,394 days (82.9%) were normal. This confirms that extreme weather events make up only a small fraction of the dataset, with cold extremes more frequent than hot extremes. The strong imbalance between normal and extreme conditions is a key factor for this study, as it helps explain why forecasting models, trained predominantly on normal weather, may underperform when applied to rare hot or cold days that drive unusual demand behaviour.
 
 
 ## Extended summary of daily temperature information
@@ -470,7 +470,7 @@ write.csv(temp_day_extended,
 ```
 
 <!-- summary --> 
-To better understand the relationship between extreme weather and demand, we extended the temperature dataset to capture not only daily minimum and maximum values, but also the frequency, duration, and timing of extreme intervals. These derived features (e.g., number of half-hour periods above 35 °C, maximum consecutive extreme runs, timing of first and last extremes) can be incorporated into forecasting models as explanatory variables. They also enable finer-grained evaluation of model accuracy, distinguishing between short bursts of heat and prolonged multi-hour extremes, or between early- and late-day events. This provides a richer basis for analysing why forecasting models struggle under certain types of extreme conditions.
+To better understand the relationship between extreme weather and demand, we extended the temperature dataset to capture not only daily minimum and maximum values, but also the frequency, duration, and timing of extreme intervals. These derived features (e.g., number of half-hour periods above 30 °C, maximum consecutive extreme runs, timing of first and last extremes) can be incorporated into forecasting models as explanatory variables. They also enable finer-grained evaluation of model accuracy, distinguishing between short bursts of heat and prolonged multi-hour extremes, or between early- and late-day events. This provides a richer basis for analysing why forecasting models struggle under certain types of extreme conditions.
 
 
 ## Boxplots of min/max temperatures
@@ -498,7 +498,7 @@ ggplot(temp_day_extended,
 ```
 
 <!-- summary -->
-The boxplots of daily maximum and minimum temperatures clearly demonstrate the seasonal clustering of extreme events. Hot extremes (≥ 35 °C) occur almost exclusively in summer, with outliers above 40 °C concentrated in January and February. In contrast, cold extremes (≤ 5 °C) are observed mainly during winter, with occasional sub-zero minimums in July and August. Transitional months show greater variability but rarely breach the thresholds.
+The boxplots of daily maximum and minimum temperatures clearly demonstrate the seasonal clustering of extreme events. Hot extremes (≥ 30 °C) occur across January to April and September to December, with outliers above 40 °C concentrated in January to February. In contrast, cold extremes (≤ 5 °C) are observed mainly during winter, with occasional sub-zero minimums in July and August. Transitional months show greater variability but rarely breach the thresholds.
 
 
 
@@ -516,7 +516,7 @@ temp_day_extended %>%
 ```
 
 <!-- summary -->
-A verification step confirmed that the counts of extreme days matched earlier results: 355 cold days (minimum ≤ 5 °C) and 76 hot days (maximum ≥ 35 °C). This consistency check ensured that subsequent data transformations preserved the correct classification of extremes.
+A verification step confirmed that the counts of extreme days matched earlier results: 355 cold days (minimum ≤ 5 °C) and 343 hot days (maximum ≥ 30 °C). This consistency check ensured that subsequent data transformations preserved the correct classification of extremes.
 
 
 Split observations by year to see if there are particular years with higher number of low temperature and/or high temperature days.
@@ -532,7 +532,7 @@ temp_day_extended %>%
 ```
 
 <!-- summary -->
-The year-wise breakdown of extreme events highlights their rarity and imbalance. Cold extremes (daily minimum ≤ 5 °C) occur fairly consistently, with 20–40 days each year, confirming their regularity in winter seasons. In contrast, hot extremes (daily maximum ≥ 35 °C) are highly variable and infrequent, ranging from 1 to 12 days per year, concentrated in particularly hot summers such as 2017. This asymmetry reinforces the dataset imbalance: forecasting models will have many more cold days to learn from than hot days, even though hot extremes tend to drive the most volatile demand. These findings underline the importance of testing model performance separately for hot and cold events, since their frequency and demand implications differ substantially.
+The year-wise breakdown of extreme events highlights their rarity and imbalance. Cold extremes (daily minimum ≤ 5 °C) occur fairly consistently, with 20–40 days each year, confirming their regularity in winter seasons. In contrast, hot extremes (daily maximum ≥ 30 °C) are highly variable and infrequent, ranging from 17 to 40 days per year, concentrated in particularly hot summers such as 2017. This asymmetry reinforces the dataset imbalance: forecasting models will have many more cold days to learn from than hot days, even though hot extremes tend to drive the most volatile demand. These findings underline the importance of testing model performance separately for hot and cold events, since their frequency and demand implications differ substantially.
 
 
 # Accuracy of current forecast demand (30 min intervals)
@@ -571,7 +571,7 @@ write.csv(combined_dataset,
 ```
 
 <!-- summary -->
-To evaluate the accuracy of existing forecast demand, we created a joint dataset that combines half-hourly observations of actual demand, forecast demand, and temperature. For each 30-minute interval, the dataset records the forecast error and classifies the period as Hot, Cold, or Normal depending on whether the temperature falls outside the 5 °C and 35 °C thresholds. This consolidated dataset forms the basis for analysing whether forecast performance differs systematically under extreme conditions. It also provides the baseline against which alternative machine learning models will be compared.
+To evaluate the accuracy of existing forecast demand, we created a joint dataset that combines half-hourly observations of actual demand, forecast demand, and temperature. For each 30-minute interval, the dataset records the forecast error and classifies the period as Hot, Cold, or Normal depending on whether the temperature falls outside the 5 °C and 30 °C thresholds. This consolidated dataset forms the basis for analysing whether forecast performance differs systematically under extreme conditions. It also provides the baseline against which alternative machine learning models will be compared.
 
 
 
@@ -629,7 +629,7 @@ Error by Temperature Bin (table of MAE/RMSE by 5 °C ranges)
 * The results show that forecast errors remain relatively stable (around 59–66 MW MAE) in (-5, 25].
 * Errors increase as temperatures rise above 25 °C, with MAE reaching ~72 MW (25–30], ~89 MW (30–35], ~117 MW (35–40], and ~137 MW (40–45].
 * RMSE values follow the same trend, peaking at nearly 190 MW for the hottest days.
-* This indicates a clear degradation in forecast performance as temperatures become extreme, especially above 35 °C.
+* This indicates a clear degradation in forecast performance as temperatures become extreme, especially above 30 °C.
 
 
 
@@ -654,7 +654,7 @@ ggplot(error_by_temp, aes(x=temp_bin, y=rmse)) +
 <!-- summary -->
 RMSE by Temperature Bin 
 * RMSE shows the same pattern but highlights the spread of large individual errors.
-* At (35–40] and (40–45], RMSE is considerably higher than MAE, indicating that extreme hot days not only increase average error but also produce more large forecast misses. * At very high temperatures, the demand is harder to predict and more volatile, leading to occasional very large forecast errors. RMSE highlights these big outliers, so it rises much faster than MAE.
+* At (30-35], (35–40] and (40–45], RMSE is considerably higher than MAE, indicating that extreme hot days not only increase average error but also produce more large forecast misses. * At very high temperatures, the demand is harder to predict and more volatile, leading to occasional very large forecast errors. RMSE highlights these big outliers, so it rises much faster than MAE.
 
 ```{r}
 error_by_cat <- combined_dataset %>%
@@ -679,7 +679,7 @@ ggplot(error_by_cat, aes(x=extreme_type, y=mae, fill=extreme_type)) +
 Error by Category: Cold / Normal / Hot
 * Normal days (5–35 °C): MAE ~60 MW, the lowest error category.
 * Cold days (< 5 °C): MAE is very similar (~59 MW), suggesting forecasts are not much worse under cold extremes.
-* Hot days (> 35 °C): MAE jumps to ~120 MW, nearly double the error of normal/cold days.
+* Hot days (> 30 °C): MAE jumps to ~95 MW, nearly 1.5 times the error of normal/cold days.
 * This confirms that forecast degradation is strongly asymmetrical: hot extremes are much more problematic than cold extremes.
 
 
@@ -695,7 +695,7 @@ ggplot(error_by_cat, aes(x = extreme_type, y = rmse, fill = extreme_type)) +
                                 "Normal" = "orchid"))
 ```
 <!-- summary -->
-The comparison of forecast errors across day types reveals that hot days present the greatest forecasting challenge. While cold (≤ 5 °C) and normal (5–35 °C) days show similar root mean square errors (around 80–85 MW), forecasts on hot days (≥ 35 °C) exhibit RMSE values of roughly 170 MW—more than double those of the other categories. This indicates that extreme heat introduces substantially larger and more volatile errors, consistent with demand surges from cooling loads and heightened grid stress. These results highlight that extreme hot weather is the most critical regime for assessing and improving demand forecasting accuracy.
+The comparison of forecast errors across day types reveals that hot days present the greatest forecasting challenge. While cold (≤ 5 °C) and normal (5–30 °C) days show similar root mean square errors (around 80–85 MW), forecasts on hot days (≥ 30 °C) exhibit RMSE values of roughly 130 MW—more than 1.5 times those of the other categories. This indicates that extreme heat introduces substantially larger and more volatile errors, consistent with demand surges from cooling loads and heightened grid stress. These results highlight that extreme hot weather is the most critical regime for assessing and improving demand forecasting accuracy.
 
 
 ## Table, mean absolute error in forecast by grouping
