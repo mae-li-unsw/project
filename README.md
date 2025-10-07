@@ -17,16 +17,16 @@ Complete the information below regarding your group.
 
 ### Brief project description
 
-Describe your project in one paragraph.
+This project focuses on the robustness of electricity demand forecasting models during extremely hot days. Exploratory Data Analysis was conducted on half-hourly electricity demand and temperature data for New South Wales from January 2010 to March 2021. The project investigates the role of feature enrichment, heat-aware weighting, and model families in the performance of models on both hot days and all days within a 24-hour prediction window.
 
 ## Repository structure
 
 The repository has the following folder structure:
 
-- agendas: agendas for each weekly meeting with lecturers (left 24h before the next meeting)
+- agendas: agendas for each weekly meeting with lecturers
 - checklists: teamwork checklist or a link to an account in a project task management tool
 - data: datasets for analysis
 - gantt_chart: Gantt chart or a link to an account in a project task management tool
-- minutes: minutes for each meeting (left not more than 24h after the corresponding meeting)
-- report: RMarkdown or Jupyter notebook report in progress
+- minutes: minutes for each meeting
+- report: final report
 - src: source code
